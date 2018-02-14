@@ -1,7 +1,9 @@
 import random
 import math
 import time
+
 from collections import deque
+from .patch import get_coordinate, get_snake, wrap_list
 
 class Board(object):
     DEFAULT_DIMENSIONS = 20
@@ -142,13 +144,15 @@ class Board(object):
 
             snake["body"] = deque([
                 { "x": x, "y": y, "color": snake["defaultColor"] },
-                { "x": x, "y": y - 1, "color": snake["defaultColor"] }
+                { "x": x, "y": y - 1, "color": snake["defaultColor"] },
+                { "x": x, "y": y - 2, "color": snake["defaultColor"] }
             ])
 
         for snake_id, snake in self.snakes.items():
             snake["gold_count"] = 0
             snake["health"] = 100
-            snake["nextMove"] = Board.MOVE_UP
+            snake["kills"] = 0
+            snake["next_move"] = Board.MOVE_UP
             snake["score"] = 0
             snake["taunt"] = ""
 
@@ -198,7 +202,7 @@ class Board(object):
         self.walls.append({ "x": x, "y": y })
         self.last_wall_spawn = time.time()
 
-    def update(self, snakes, tick_snakes = True):
+    def update(self, game, snakes, tick_snakes = True):
         self.snakes = snakes
 
         if tick_snakes:
@@ -212,7 +216,7 @@ class Board(object):
                     Board.MOVE_DOWN: [0, 1],
                     Board.MOVE_LEFT: [-1, 0],
                     Board.MOVE_RIGHT: [1, 0]
-                }[snake["nextMove"]]
+                }[snake["next_move"]]
 
                 snake["body"].appendleft({
                     "x": current_head_position["x"] + next_position_vector[0],
@@ -228,6 +232,8 @@ class Board(object):
 
                 if head_x < 0 or head_x >= self.width or head_y < 0 or head_y >= self.height:
                     snake["health"] = 0
+                    snake["death"] = { "turn": game.turn_number, "reason": "oob" }
+
                     continue
 
                 value, thing = self.get_at_position(head_x, head_y, [snake])
@@ -241,6 +247,7 @@ class Board(object):
                     self.gold.remove(thing)
                 elif value == Board.BOARD_TYPE_WALL:
                     snake["health"] = 0
+                    snake["death"] = { "turn": game.turn_number, "reason": "wall" }
                 elif value == Board.BOARD_TYPE_TELEPORTER:
                     channel = thing["channel"]
                     channel_teleporters = [
@@ -264,44 +271,47 @@ class Board(object):
 
                     if snake_head["x"] == head_x and snake_head["y"] == head_y:
                         # head to head collision
-                        if len(snake["body"]) > len(thing["body"]): snake["score"] = snake["score"] + 1
-                        else: snake["health"] = 0
+                        if len(snake["body"]) > len(thing["body"]):
+                            # handle the other snake's death in their loop iteration
+                            snake["score"] = snake["score"] + 1
+                        else:
+                            snake["health"] = 0
+                            snake["death"] = { "turn": game.turn_number, "reason": "killed", "killer": thing["id"] }
+                            thing["kills"] = thing["kills"] + 1
                     else:
                         snake["health"] = 0
+                        snake["death"] = {
+                            "turn": game.turn_number,
+                            "reason": "collision",
+                            "killer": thing["id"]
+                        }
                 else:
                     snake["score"] = snake["score"] + 0.1
                     snake["body"].pop()
 
-    def to_json(self, compatibility = False):
+    def to_json(self, api_version = None):
         snakes = [ snake for snake_id, snake in self.snakes.items() if snake["health"] > 0 ]
-        dead_snakes = [ snake for snake_id, snake in self.snakes.items() if snake["health"] == 0 ]
+        dead_snakes = [ snake for snake_id, snake in self.snakes.items() if snake["health"] <= 0 ]
 
-        m_coordinate = lambda coord: coord if not compatibility else [coord["x"], coord["y"]]
-
-        m_snake = lambda snake: {
-            "id": snake["id"],
-            "color": snake["defaultColor"],
-            "headImageUrl": snake["headImageUrl"]
-                if snake["headImageUrl"] is not None \
-                else "/images/{}".format(snake["headImage"]),
-            "name": snake["name"],
-            "score": snake["score"],
-            "goldCount": snake["gold_count"],
-            "gold_count": snake["gold_count"],
-            "taunt": snake["taunt"],
-            "health": snake["health"],
-            "health_points": snake["health"],
-            "coords": [ m_coordinate(coord) for coord in snake["body"] ]
-        }
-
-        return {
-            "dead_snakes": [ m_snake(snake) for snake in dead_snakes ],
-            "deadSnakes": [ m_snake(snake) for snake in dead_snakes ],
-            "food": [ m_coordinate(coord) for coord in self.food ],
-            "gold": [ m_coordinate(coord) for coord in self.gold ],
+        board_json = {
+            "food": wrap_list([ get_coordinate(coord, api_version) for coord in self.food ], api_version),
             "height": self.height,
-            "snakes": [ m_snake(snake) for snake in snakes ],
-            "teleporters": self.teleporters,
-            "walls": [ m_coordinate(coord) for coord in self.walls ],
+            "snakes": wrap_list([ get_snake(snake, api_version) for snake in snakes ], api_version),
             "width": self.width
         }
+
+        if api_version == "2016":
+            board_json["walls"] = [ get_coordinate(coord, api_version) for coord in self.walls ]
+        if api_version == "2017":
+            board_json["dead_snakes"] = wrap_list([ get_snake(snake, api_version) for snake in dead_snakes ], api_version)
+            board_json["gold"] = wrap_list([ get_coordinate(coord, api_version) for coord in self.gold ], api_version)
+
+            return board_json
+        elif api_version == "2018":
+            return board_json
+
+        board_json["deadSnakes"] = [ get_snake(snake, api_version) for snake in dead_snakes ]
+        board_json["teleporters"] = self.teleporters
+        board_json["walls"] = [ get_coordinate(coord, api_version) for coord in self.walls ]
+
+        return board_json

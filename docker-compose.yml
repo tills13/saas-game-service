@@ -1,0 +1,23 @@
+version: "2"
+
+services:
+  manager:
+    build: .
+    container_name: saas.manager
+    command: ["python3", "app.py"]
+    environment:
+      DB_HOST: postgres
+      REDIS_HOST: redis
+      FLASK_DEBUG: 1
+    ports:
+      - "127.0.0.1:3001:3001"
+    external_links:
+      - saas.postgres:postgres
+      - saas.redis:redis
+    volumes:
+      - ".:/code"
+
+networks:
+  default:
+    external:
+      name: server_default

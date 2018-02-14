@@ -95,7 +95,7 @@ class Manager(object):
 
         if game.mode == Game.MODE_AUTO:
             game.mode = Game.MODE_MANUAL
-            game.action_queue
+            # game.action_queue
         else:
             game.mode = Game.MODE_AUTO
             game.action_queue.put((1, game.step_game, { "allow_stepping": game.mode != Game.MODE_MANUAL }))

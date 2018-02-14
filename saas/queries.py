@@ -26,7 +26,7 @@ get_game_prepared = postgres.prepare("""
 get_game_snakes_prepared = postgres.prepare("""
     SELECT
         s."id"::text, s."defaultColor", s."headImage", s."headImageUrl",
-        s."isBountySnake", s."isLegacy", s."name", s."url", s."devUrl"
+        s."isBountySnake", s."apiVersion" as "api_version", s."name", s."url", s."devUrl"
     FROM "public"."Snakes" AS s
     LEFT JOIN "public"."SnakeGames" sg ON s."id" = "sg"."SnakeId"
     LEFT JOIN "public"."Games" AS g ON "sg"."GameId" = g."id"
