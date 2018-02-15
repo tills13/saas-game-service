@@ -112,4 +112,4 @@ class Manager(object):
         redis.set(
             "game:max_viewer_count:{}".format(game.game_id),
             max(max_viewer_count, current_viewer_count)
-         )
+        )

@@ -6,11 +6,15 @@ import base64
 from flask_socketio import join_room, leave_room
 from queue import Empty, PriorityQueue
 from requests.exceptions import HTTPError, ConnectionError as RequestsConnectionError
-from saas import app, postgres, redis, socketio
-from saas.queries import clone_game, get_child_games, get_game_prepared, get_game_snakes_prepared, set_game_status, set_snake_place
-from saas.board import Board
 from threading import Event, Thread
+
+
+from . import app, postgres, redis, socketio
+from . import models
+from .queries import clone_game, get_child_games, get_game_prepared, get_game_snakes_prepared, set_game_status, set_snake_place
+from .board import Board
 from .patch import get_move_request, get_start_request
+
 
 class Game(Thread):
     api_version = "client"
@@ -69,10 +73,10 @@ class Game(Thread):
     def check_bounty_conditions(self, snake):
         try:
             response = requests.post(
-                "{}/bounty/check".format(snake["url"]),
+                "{}/bounty/check".format(snake.url),
                 headers={ "Content-Type": "application/json" },
                 timeout=self.game["responseTime"],
-                json=self.board.to_json(api_version=snake["api_version"])
+                json=self.board.to_json(api_version=snake.api_version)
             )
 
             response.raise_for_status()
@@ -105,11 +109,11 @@ class Game(Thread):
 
             sorted_snakes = sorted(
                 [snake for snake_id, snake in snakes.items()],
-                key=lambda snake: snake["score"]
+                key=lambda snake: snake.score
             )
 
             for place, snake in enumerate(sorted_snakes):
-                set_snake_place(place + 1, snake["id"], self.game_id)
+                set_snake_place(place + 1, snake.id, self.game_id)
 
         self.redirect_to_child()
 
@@ -150,16 +154,16 @@ class Game(Thread):
         return None
 
     def get_game_snakes(self):
-        snakes_rows = get_game_snakes_prepared.rows(self.game_id)
-        return { str(row["id"]): dict(row) for row in snakes_rows }
+        snakes = get_game_snakes_prepared.rows(self.game_id)
+        return { str(snake["id"]): models.Snake(snake) for snake in snakes }
 
     def get_snake_next_move(self, snake):
         app.logger.info("[%s] get_snake_next_move (%s)", self.game_id, snake["name"])
         error = None
 
         try:
-            snake_url = snake["devUrl"] if self.game["devMode"] and snake["devUrl"] else snake["url"]
-            # app.logger.info(get_move_request(self.board, self, snake))
+            snake_url = snake.get_url(self.game["devMode"])
+
             response = requests.post(
                 "{}/move".format(snake_url),
                 timeout=self.game["responseTime"],
@@ -169,13 +173,10 @@ class Game(Thread):
 
             if response.status_code == 200:
                 response_json = response.json()
-
-                if snake["api_version"] == "2017":
-                    snake["taunt"] = response_json["taunt"]
-
-                snake["next_move"] = response_json.get("move", snake.get("nextMove", "up"))
+                snake.handle_move_response(response_json)
         except (ValueError, RequestsConnectionError, HTTPError) as m_error:
-            app.logger.info("[%s] init error (%s): %s", self.game_id, snake["name"], m_error)
+            app.logger.info("[%s] init error (%s): %s", self.game_id, snake.name, m_error)
+            snake.error = m_error
             error = m_error
 
         return snake, error
@@ -233,7 +234,7 @@ class Game(Thread):
             "[%s] %d snakes [%s]",
             self.game_id,
             self.board.get_snake_count(),
-            ",".join([snake["name"] for snake_id, snake in snakes.items()])
+            ",".join([snake.name for snake_id, snake in snakes.items()])
         )
 
         for snake_id, snake in snakes.items():
@@ -246,24 +247,19 @@ class Game(Thread):
 
     def initialize_snake(self, snake):
         try:
-            snake_url = snake["devUrl"] if self.game["devMode"] and snake["devUrl"] else snake["url"]
+            snake_url = snake.get_url(self.game["devMode"])
             response = requests.post(
                 "{}/start".format(snake_url),
                 headers={ "Content-Type": "application/json" },
                 timeout=(self.game["responseTime"] * 2),
-                json=get_start_request(self, snake["api_version"])
+                json=get_start_request(self, api_version=snake.api_version)
             )
 
             if response.status_code == 200:
                 response_json = response.json()
-                snake["taunt"] = response_json["taunt"]
-
-                if snake["api_version"] == "2018":
-                    snake["name"] = response_json["name"]
-                    snake["color"] = response_json["color"]
-                    snake["secondary_color"] = response_json["color"]
+                snake.handle_start_response(response_json)
         except (ValueError, RequestsConnectionError, HTTPError) as error:
-            app.logger.info("[%s] init error (%s): %s", self.game_id, snake["name"], error)
+            app.logger.info("[%s] init error (%s): %s", self.game_id, snake.name, error)
 
         return snake
 
@@ -346,7 +342,7 @@ class Game(Thread):
 
         bounty_snakes = {
             snake_id: snake for snake_id, snake in snakes.items()
-            if snake["isBountySnake"]
+            if snake.is_bounty_snake
         }
 
         if self.game["daemon_id"] is not None:
@@ -358,7 +354,7 @@ class Game(Thread):
         for snake_id, snake in snakes.items():
             snake, error = self.get_snake_next_move(snake)
 
-            if error: errors[snake["id"]] = error
+            if error: errors[snake.id] = error
 
         self.board.update(self, snakes, tick_snakes=True)
 
@@ -435,10 +431,10 @@ class Game(Thread):
         if self.game["turnLimit"] != 0 and self.turn_number >= self.game["turnLimit"]:
             return True
 
-        if not [snake for snake_id, snake in snakes.items() if snake["health"] > 0]:
+        if not [snake for snake_id, snake in snakes.items() if snake.is_alive]:
             return True
 
-        if [snake for snake_id, snake in snakes.items() if snake["gold_count"] >= self.game["boardGoldWinningThreshold"]]:
+        if [snake for snake_id, snake in snakes.items() if snake.gold >= self.game["boardGoldWinningThreshold"]]:
             return True
 
         return False

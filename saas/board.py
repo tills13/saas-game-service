@@ -2,8 +2,10 @@ import random
 import math
 import time
 
-from typing import Dict, List
+from typing import Any, Dict, List
 from collections import deque
+
+# import saas.patch
 
 from .patch import get_coordinate, get_snake, wrap_list
 from .constants import SPAWN_STRATEGY_RANDOM, SPAWN_STRATEGY_STATIC, SPAWN_STRATEGY_DONT_RESPAWN
@@ -63,10 +65,10 @@ class Board:
 
         self.initialize_snakes()
 
-    def get_at_position(self, x: int, y: int, exclude: List[Position] = None):
+    def get_at_position(self, x: int, y: int, exclude: List[Any] = None):
         for snake_id, snake in self.snakes.items():
             if exclude and snake in exclude: continue
-            for body_segment in [] if "body" not in snake else snake["body"]:
+            for body_segment in snake.body:
                 if body_segment["x"] == x and body_segment["y"] == y:
                     return Board.BOARD_TYPE_SNAKE, snake
 
@@ -147,25 +149,19 @@ class Board:
                     m_snake = [snake for snake in self.configuration["snakes"] if index == snake["number"]][0]
 
                 if m_snake and "coords" in m_snake:
-                    snake["body"] = deque([coord for coord in m_snake["coords"]])
+                    snake.body = [coord for coord in m_snake["coords"]]
                     continue
 
             # default to random placement
             x, y = self.get_random_empty_position()
 
-            snake["body"] = deque([
-                { "x": x, "y": y, "color": snake["defaultColor"] },
-                { "x": x, "y": y - 1, "color": snake["defaultColor"] },
-                { "x": x, "y": y - 2, "color": snake["defaultColor"] }
-            ])
+            snake.body = [
+                { "x": x, "y": y, "color": snake.color },
+                { "x": x, "y": y - 1, "color": snake.color },
+                { "x": x, "y": y - 2, "color": snake.color }
+            ]
 
-        for snake_id, snake in self.snakes.items():
-            snake["gold_count"] = 0
-            snake["health"] = 100
-            snake["kills"] = 0
-            snake["next_move"] = Board.MOVE_UP
-            snake["score"] = 0
-            snake["taunt"] = ""
+            snake.reset()
 
     def spawn_food_by_strat(self, strat: str):
         if strat == SPAWN_STRATEGY_RANDOM:
@@ -322,9 +318,9 @@ class Board:
 
     def to_json(self, api_version: str = None):
         if api_version == "2018": snakes = [ snake for snake_id, snake in self.snakes.items() ]
-        else: snakes = [ snake for snake_id, snake in self.snakes.items() if snake["health"] > 0 ]
+        else: snakes = [ snake for snake_id, snake in self.snakes.items() if snake.is_alive ]
 
-        dead_snakes = [ snake for snake_id, snake in self.snakes.items() if snake["health"] <= 0 ]
+        dead_snakes = [ snake for snake_id, snake in self.snakes.items() if not snake.is_alive ]
         food = [ get_coordinate(food, api_version) for food in self.food if not food.get("hidden", False) ]
 
         board_json = {

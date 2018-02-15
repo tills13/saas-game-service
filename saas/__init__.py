@@ -1,10 +1,11 @@
 import logging
 import postgresql
 import redis
-
-from saas import settings
 from flask import Flask
 from flask_socketio import SocketIO
+
+import saas.models
+from saas import settings
 
 app = Flask(__name__)
 socketio = SocketIO(app)
