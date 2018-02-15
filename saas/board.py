@@ -2,10 +2,20 @@ import random
 import math
 import time
 
+from typing import Dict, List
 from collections import deque
-from .patch import get_coordinate, get_snake, wrap_list
 
-class Board(object):
+from .patch import get_coordinate, get_snake, wrap_list
+from .constants import SPAWN_STRATEGY_RANDOM, SPAWN_STRATEGY_STATIC, SPAWN_STRATEGY_DONT_RESPAWN
+from .types import Position, PositionList
+
+BoardPosition = Dict[str, int]
+Food = BoardPosition
+Gold = BoardPosition
+Wall = BoardPosition
+Teleporter = BoardPosition
+
+class Board:
     DEFAULT_DIMENSIONS = 20
     BOARD_TYPE_EMPTY = -1
     BOARD_TYPE_FOOD = 0
@@ -19,7 +29,8 @@ class Board(object):
     MOVE_LEFT = "left"
     MOVE_RIGHT = "right"
 
-    def __init__(self, snakes, width=20, height=20, configuration=None):
+
+    def __init__(self, snakes, width: int = 20, height: int = 20, configuration=None):
         self.snakes = snakes
         self.configuration = configuration
 
@@ -52,7 +63,7 @@ class Board(object):
 
         self.initialize_snakes()
 
-    def get_at_position(self, x, y, exclude=None):
+    def get_at_position(self, x: int, y: int, exclude: List[Position] = None):
         for snake_id, snake in self.snakes.items():
             if exclude and snake in exclude: continue
             for body_segment in [] if "body" not in snake else snake["body"]:
@@ -81,9 +92,9 @@ class Board(object):
 
         return Board.BOARD_TYPE_EMPTY, None
 
-    def get_random_empty_position(self, positions=None):
+    def get_random_empty_position(self, positions: PositionList = None, exclude: PositionList = None) -> Position:
         if positions is not None:
-            for position in positions:
+            for position in random.shuffle(positions):
                 value, thing = self.get_at_position(position["x"], position["y"])
                 if value == Board.BOARD_TYPE_EMPTY: return position["x"], position["y"]
 
@@ -99,31 +110,31 @@ class Board(object):
     def get_food(self):
         return self.food
 
-    def get_food_count(self):
+    def get_food_count(self) -> int:
         return len(self.food)
 
     def get_gold(self):
         return self.gold
 
-    def get_gold_count(self):
+    def get_gold_count(self) -> int:
         return len(self.gold)
 
     def get_snakes(self):
         return self.snakes
 
-    def get_snake_count(self):
+    def get_snake_count(self) -> int:
         return len(self.snakes.keys())
 
     def get_teleporters(self):
         return self.teleporters
 
-    def get_teleporter_count(self):
+    def get_teleporter_count(self) -> int:
         return len(self.teleporters)
 
     def get_walls(self):
         return self.walls
 
-    def get_wall_count(self):
+    def get_wall_count(self) -> int:
         return len(self.walls)
 
     def initialize_snakes(self):
@@ -156,6 +167,15 @@ class Board(object):
             snake["score"] = 0
             snake["taunt"] = ""
 
+    def spawn_food_by_strat(self, strat: str):
+        if strat == SPAWN_STRATEGY_RANDOM:
+            return self.spawn_random_food()
+        elif strat == SPAWN_STRATEGY_STATIC:
+            hidden_food = [food for food in self.food if food["hidden"] == True]
+            if hidden_food and len(hidden_food) > 0:
+                food = random.choice(hidden_food)
+                return self.spawn_food(food["x"], food["y"])
+
     def spawn_random_food(self, count = 1):
         for index in range(0, count):
             x, y = self.get_random_empty_position(
@@ -165,6 +185,17 @@ class Board(object):
             self.spawn_food(x, y)
 
     def spawn_food(self, x, y):
+        m_type, thing = self.get_at_position(x, y)
+
+        if thing and m_type == Board.BOARD_TYPE_FOOD:
+            m_thing = thing.copy()
+            m_thing["hidden"] = False
+
+            self.food.insert(self.food.index(thing), m_thing)
+            return
+        elif thing:
+            return
+
         self.food.append({ "x": x, "y": y })
 
     def spawn_random_gold(self, count = 1):
@@ -198,7 +229,7 @@ class Board(object):
 
             self.spawn_wall(x, y)
 
-    def spawn_wall(self, x, y):
+    def spawn_wall(self, x: int, y: int):
         self.walls.append({ "x": x, "y": y })
         self.last_wall_spawn = time.time()
 
@@ -289,12 +320,15 @@ class Board(object):
                     snake["score"] = snake["score"] + 0.1
                     snake["body"].pop()
 
-    def to_json(self, api_version = None):
-        snakes = [ snake for snake_id, snake in self.snakes.items() if snake["health"] > 0 ]
+    def to_json(self, api_version: str = None):
+        if api_version == "2018": snakes = [ snake for snake_id, snake in self.snakes.items() ]
+        else: snakes = [ snake for snake_id, snake in self.snakes.items() if snake["health"] > 0 ]
+
         dead_snakes = [ snake for snake_id, snake in self.snakes.items() if snake["health"] <= 0 ]
+        food = [ get_coordinate(food, api_version) for food in self.food if not food.get("hidden", False) ]
 
         board_json = {
-            "food": wrap_list([ get_coordinate(coord, api_version) for coord in self.food ], api_version),
+            "food": wrap_list(food, api_version),
             "height": self.height,
             "snakes": wrap_list([ get_snake(snake, api_version) for snake in snakes ], api_version),
             "width": self.width
@@ -302,6 +336,8 @@ class Board(object):
 
         if api_version == "2016":
             board_json["walls"] = [ get_coordinate(coord, api_version) for coord in self.walls ]
+
+            return board_json
         if api_version == "2017":
             board_json["dead_snakes"] = wrap_list([ get_snake(snake, api_version) for snake in dead_snakes ], api_version)
             board_json["gold"] = wrap_list([ get_coordinate(coord, api_version) for coord in self.gold ], api_version)

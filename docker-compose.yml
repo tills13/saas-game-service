@@ -20,4 +20,4 @@ services:
 networks:
   default:
     external:
-      name: server_default
+      name: saasapi_default

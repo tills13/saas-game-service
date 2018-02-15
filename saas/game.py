@@ -13,6 +13,8 @@ from threading import Event, Thread
 from .patch import get_move_request, get_start_request
 
 class Game(Thread):
+    api_version = "client"
+
     MODE_AUTO = "MODE_AUTO"
     MODE_MANUAL = "MODE_MANUAL"
 
@@ -22,10 +24,6 @@ class Game(Thread):
     STATUS_RESTARTED = "RESTARTED"
     STATUS_STARTED = "STARTED"
     STATUS_STOPPED = "STOPPED"
-
-    SPAWN_STRATEGY_RANDOM = "RANDOM"
-    SPAWN_STRATEGY_RANDOM = "RANDOM"
-    SPAWN_STRATEGY_RANDOM = "RANDOM"
 
     WALL_SPAWN_RATE = 10 # in seconds
 
@@ -41,6 +39,7 @@ class Game(Thread):
         self.game_id = game_id
         self.mode = Game.MODE_MANUAL
         self.turn_number = start_on_turn_number
+        self.history = []
 
         self._initialized_called = False
 
@@ -156,6 +155,7 @@ class Game(Thread):
 
     def get_snake_next_move(self, snake):
         app.logger.info("[%s] get_snake_next_move (%s)", self.game_id, snake["name"])
+        error = None
 
         try:
             snake_url = snake["devUrl"] if self.game["devMode"] and snake["devUrl"] else snake["url"]
@@ -174,10 +174,11 @@ class Game(Thread):
                     snake["taunt"] = response_json["taunt"]
 
                 snake["next_move"] = response_json.get("move", snake.get("nextMove", "up"))
-        except (ValueError, RequestsConnectionError, HTTPError) as error:
-            app.logger.info("[%s] init error (%s): %s", self.game_id, snake["name"], error)
+        except (ValueError, RequestsConnectionError, HTTPError) as m_error:
+            app.logger.info("[%s] init error (%s): %s", self.game_id, snake["name"], m_error)
+            error = m_error
 
-        return snake
+        return snake, error
 
     def initialize_game(self, override_board=True):
         self.sync_game()
@@ -225,6 +226,7 @@ class Game(Thread):
                 if self.game["boardHasTeleporters"]:
                     self.board.spawn_random_teleporters(self.game["boardTeleporterCount"] - self.board.get_teleporter_count())
 
+        self.history = []
         snakes = self.board.get_snakes()
 
         app.logger.info(
@@ -255,11 +257,11 @@ class Game(Thread):
             if response.status_code == 200:
                 response_json = response.json()
                 snake["taunt"] = response_json["taunt"]
-                # snake["color"] = response_json["color"]
-                # snake["secondary_color"] = response_json["color"]
 
                 if snake["api_version"] == "2018":
                     snake["name"] = response_json["name"]
+                    snake["color"] = response_json["color"]
+                    snake["secondary_color"] = response_json["color"]
         except (ValueError, RequestsConnectionError, HTTPError) as error:
             app.logger.info("[%s] init error (%s): %s", self.game_id, snake["name"], error)
 
@@ -331,10 +333,12 @@ class Game(Thread):
 
     def start_game(self, mode=MODE_MANUAL):
         app.logger.info("starting game with mode: %s", mode)
+        self.history.push(self.board.to_json(api_version=Game.api_version))
         self.step_game()
 
     def step_game(self, allow_stepping = False):
         snakes = self.board.get_snakes()
+        errors = { }
 
         if self.game["status"] != Game.STATUS_IN_PROGRESS:
             set_game_status(Game.STATUS_IN_PROGRESS, self.game_id)
@@ -352,27 +356,31 @@ class Game(Thread):
             bounty = self.check_bounty_conditions(bounty_snake)
 
         for snake_id, snake in snakes.items():
-            snake = self.get_snake_next_move(snake)
+            snake, error = self.get_snake_next_move(snake)
+
+            if error: errors[snake["id"]] = error
 
         self.board.update(self, snakes, tick_snakes=True)
 
         # top up the food
         if self.board.get_food_count() < self.game["boardFoodCount"]:
             spawn_count = self.game["boardFoodCount"] - self.board.get_food_count()
-            if self.game["boardFoodStrategy"] == Game.SPAWN_STRATEGY_RANDOM: self.board.spawn_random_food(count=spawn_count)
-            else: pass
+            self.board.spawn_food_by_strat(self.game["boardFoodStrategy"])
 
         if self.game["boardHasGold"] and self.board.get_gold_count() < self.game["boardGoldCount"]:
             if self.board.last_gold_spawn and time.time() - self.board.last_gold_spawn >= (self.game["boardGoldRespawnInterval"]):
-                if self.game["boardGoldStrategy"] == Game.SPAWN_STRATEGY_RANDOM: self.board.spawn_random_gold(count=1)
-                else: pass
+                pass
+                # if self.game["boardGoldStrategy"] == Game.SPAWN_STRATEGY_RANDOM: self.board.spawn_random_gold(count=1)
+                # else: pass
 
         if self.game["boardHasWalls"] and self.board.get_wall_count() / (self.board.width * self.board.height) < 0.10:
             if self.board.last_wall_spawn and time.time() - self.board.last_wall_spawn >= Game.WALL_SPAWN_RATE * 1000:
                 self.board.spawn_random_walls(count=1)
 
         self.turn_number = self.turn_number + 1
-        self.update_clients()
+        self.update_clients(errors=errors)
+
+        self.history.push(self.board.to_json(api_version=Game.api_version))
 
         # allow the game to continue until there are no snakes alive for testing purposes
         if self.win_conditions_met():
@@ -383,7 +391,9 @@ class Game(Thread):
 
     def sync_game(self, and_daemon=True):
         app.logger.info("fetching game %s from db", self.game_id)
+
         self.game = get_game_prepared.first(self.game_id)
+        # self.history = self.game["history"]
 
         if not self.game:
             raise Exception("game {} not found".format(self.game_id))
@@ -398,7 +408,7 @@ class Game(Thread):
     def update_clients(self, errors=None, broadcast=True):
         if self.board is not None:
             data = {
-                "board": self.board.to_json(api_version="client"),
+                "board": self.board.to_json(api_version=Game.api_version),
                 "daemon": self.game_daemon,
                 "errors": errors,
                 "turn": self.turn_number,

@@ -2,6 +2,10 @@ import uuid
 
 from saas import postgres
 
+set_game_history = postgres.prepare("""
+    UPDATE "public"."Games" AS "g" SET "history" = $1 WHERE "g"."id" = $2
+""")
+
 set_game_status = postgres.prepare("""
     UPDATE "public"."Games" AS "g" SET "status" = $1 WHERE "g"."id" = $2
 """)
