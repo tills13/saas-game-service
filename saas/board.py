@@ -5,8 +5,6 @@ import time
 from typing import Any, Dict, List
 from collections import deque
 
-# import saas.patch
-
 from .patch import get_coordinate, get_snake, wrap_list
 from .constants import SPAWN_STRATEGY_RANDOM, SPAWN_STRATEGY_STATIC, SPAWN_STRATEGY_DONT_RESPAWN
 from .types import Position, PositionList
@@ -235,46 +233,44 @@ class Board:
         if tick_snakes:
             # update all positions and health
             for snake_id, snake in self.snakes.items():
-                snake["health"] = snake["health"] - 1
+                snake.decr_health
 
-                current_head_position = snake["body"][0]
+                current_head_position = snake.head
                 next_position_vector = {
                     Board.MOVE_UP: [0, -1],
                     Board.MOVE_DOWN: [0, 1],
                     Board.MOVE_LEFT: [-1, 0],
                     Board.MOVE_RIGHT: [1, 0]
-                }[snake["next_move"]]
+                }[snake.next_move]
 
-                snake["body"].appendleft({
-                    "x": current_head_position["x"] + next_position_vector[0],
-                    "y": current_head_position["y"] + next_position_vector[1],
-                    "color": current_head_position.get("color", snake["defaultColor"])
+                snake.body.appendleft({
+                    "x": snake.head["x"] + next_position_vector[0],
+                    "y": snake.head["y"] + next_position_vector[1],
+                    "color": snake.head.get("color", snake.color)
                 })
 
             for snake_id, snake in self.snakes.items():
                 # reset head
-                current_head_position = snake["body"][0]
+                current_head_position = snake.head
                 head_x = current_head_position["x"]
                 head_y = current_head_position["y"]
 
                 if head_x < 0 or head_x >= self.width or head_y < 0 or head_y >= self.height:
-                    snake["health"] = 0
-                    snake["death"] = { "turn": game.turn_number, "reason": "oob" }
-
+                    snake.kill(game.turn_number, "oob")
                     continue
 
                 value, thing = self.get_at_position(head_x, head_y, [snake])
 
                 if value == Board.BOARD_TYPE_FOOD:
-                    snake["health"] = 100
+                    snake.health = 100
                     self.food.remove(thing)
                 elif value == Board.BOARD_TYPE_GOLD:
-                    snake["score"] = snake["score"] + 5 # todo custom gold values?
-                    snake["gold_count"] = snake["gold_count"] + 1
+                    snake.score = snake.score + 5 # todo custom gold values?
+                    snake.incr_gold()
+
                     self.gold.remove(thing)
                 elif value == Board.BOARD_TYPE_WALL:
-                    snake["health"] = 0
-                    snake["death"] = { "turn": game.turn_number, "reason": "wall" }
+                    snake.kill(game.turn_number, "wall")
                 elif value == Board.BOARD_TYPE_TELEPORTER:
                     channel = thing["channel"]
                     channel_teleporters = [
@@ -287,34 +283,28 @@ class Board:
 
                     if channel_teleporters:
                         teleporter = random.choice(channel_teleporters)
-                        snake["body"].popleft() # remove current head
-                        snake["body"].appendleft({
+                        snake.body.popleft() # remove current head
+                        snake.body.appendleft({
                             "x": teleporter["x"],
                             "y": teleporter["y"],
                             "color": current_head_position["color"]
                         })
                 elif value == Board.BOARD_TYPE_SNAKE:
-                    snake_head = thing["body"][0]
+                    snake_head = thing.head
 
                     if snake_head["x"] == head_x and snake_head["y"] == head_y:
                         # head to head collision
-                        if len(snake["body"]) > len(thing["body"]):
+                        if snake.length > thing.length:
                             # handle the other snake's death in their loop iteration
-                            snake["score"] = snake["score"] + 1
+                            snake.score = snake.score + 1
                         else:
-                            snake["health"] = 0
-                            snake["death"] = { "turn": game.turn_number, "reason": "killed", "killer": thing["id"] }
-                            thing["kills"] = thing["kills"] + 1
+                            snake.kill(game.turn_number, "killed", thing.id)
+                            thing.incr_kills()
                     else:
-                        snake["health"] = 0
-                        snake["death"] = {
-                            "turn": game.turn_number,
-                            "reason": "collision",
-                            "killer": thing["id"]
-                        }
+                        snake.kill(game.turn_number, "collision", thing.id)
                 else:
-                    snake["score"] = snake["score"] + 0.1
-                    snake["body"].pop()
+                    snake.score = snake.score + 0.1
+                    snake.body.pop()
 
     def to_json(self, api_version: str = None):
         if api_version == "2018": snakes = [ snake for snake_id, snake in self.snakes.items() ]

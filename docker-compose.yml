@@ -6,8 +6,8 @@ services:
     container_name: saas.manager
     command: ["python3", "app.py"]
     environment:
-      DB_HOST: postgres
-      REDIS_HOST: redis
+      DB_HOST: saas.postgres
+      REDIS_HOST: saas.redis
       FLASK_DEBUG: 1
     ports:
       - "127.0.0.1:3001:3001"
@@ -20,4 +20,4 @@ services:
 networks:
   default:
     external:
-      name: saasapi_default
+      name: server_default

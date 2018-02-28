@@ -88,6 +88,10 @@ class Snake(object):
       self.seconrdary_color = start_response["secondary_color"]
 
   @property
+  def head(self):
+    return self.body[0]
+
+  @property
   def health(self):
     return self._health
 
@@ -113,6 +117,7 @@ class Snake(object):
     return self.health >= 0
 
   def kill(self, turn_number, reason, killer):
+    self.health = 0
     self.death = { "turn": turn_number, "reason": reason, "killer": killer }
 
   @property
