@@ -14,7 +14,7 @@ def get_coordinate(coord, api_version):
     return coord
 
 def get_move_request(board, game, snake):
-    api_version = snake["api_version"]
+    api_version = snake.api_version
     turn_number = game.turn_number
 
     request = board.to_json(api_version=api_version)

@@ -3,7 +3,6 @@ import math
 import time
 
 from typing import Any, Dict, List
-from collections import deque
 
 from .patch import get_coordinate, get_snake, wrap_list
 from .constants import SPAWN_STRATEGY_RANDOM, SPAWN_STRATEGY_STATIC, SPAWN_STRATEGY_DONT_RESPAWN
@@ -92,6 +91,22 @@ class Board:
 
         return Board.BOARD_TYPE_EMPTY, None
 
+    def get_neighbors(self, position: BoardPosition):
+        neighbors = [
+            { "x": position["x"] + dx, "y": position["y"] + dy }
+            for [ dx, dy ] in
+            [ [0, 1], [1, 0], [-1, 0], [0, -1] ]
+        ]
+
+        # filter neighbors that are outside the board
+        return [
+            neighbor for neighbor in neighbors
+            if neighbor["x"] >= 0 and \
+                neighbor["y"] >= 0 and \
+                neighbor["x"] < self.width and \
+                neighbor["y"] < self.width
+        ]
+
     def get_random_empty_position(self, positions: PositionList = None, exclude: PositionList = None) -> Position:
         if positions is not None:
             for position in random.shuffle(positions):
@@ -137,7 +152,7 @@ class Board:
     def get_wall_count(self) -> int:
         return len(self.walls)
 
-    def initialize_snakes(self):
+    def initialize_snakes(self, snake_start_length=3):
         for index, (snake_id, snake) in enumerate(self.snakes.items()):
             if self.configuration:
                 m_snake = None
@@ -151,13 +166,10 @@ class Board:
                     continue
 
             # default to random placement
-            x, y = self.get_random_empty_position()
+            for _ in range(0, snake_start_length):
+                x, y = self.get_random_empty_position(exclude=snake.body)
+                snake.body.append({ "x": x, "y": y, "color": snake.color })
 
-            snake.body = [
-                { "x": x, "y": y, "color": snake.color },
-                { "x": x, "y": y - 1, "color": snake.color },
-                { "x": x, "y": y - 2, "color": snake.color }
-            ]
 
             snake.reset()
 

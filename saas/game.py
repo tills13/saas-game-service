@@ -84,7 +84,7 @@ class Game(Thread):
             app.logger.info(
                 "[%s] bouty error (%s): %s",
                 self.game_id,
-                snake["id"],
+                snake.id,
                 error
             )
 
@@ -155,10 +155,10 @@ class Game(Thread):
 
     def get_game_snakes(self):
         snakes = get_game_snakes_prepared.rows(self.game_id)
-        return { str(snake["id"]): models.Snake(snake) for snake in snakes }
+        return { str(snake_data["id"]): models.Snake(snake_data) for snake_data in snakes }
 
     def get_snake_next_move(self, snake):
-        app.logger.info("[%s] get_snake_next_move (%s)", self.game_id, snake["name"])
+        app.logger.info("[%s] get_snake_next_move (%s)", self.game_id, snake.name)
         error = None
 
         try:
@@ -329,7 +329,7 @@ class Game(Thread):
 
     def start_game(self, mode=MODE_MANUAL):
         app.logger.info("starting game with mode: %s", mode)
-        self.history.push(self.board.to_json(api_version=Game.api_version))
+        self.history.append(self.board.to_json(api_version=Game.api_version))
         self.step_game()
 
     def step_game(self, allow_stepping = False):

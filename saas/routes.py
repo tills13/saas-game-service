@@ -1,11 +1,16 @@
+import json
 from saas import socketio, app, manager
 from flask_socketio import emit, rooms
 from flask import render_template, request
 
 @app.route("/")
 def index():
-    games = manager.get_games()
-    return render_template("games", games=games)
+    return json.dumps([game.id for id, game in manager.get_games().items()])
+
+@app.route("/start/<string:game_id>")
+def start(game_id):
+    manager.start_game(game_id)
+    return json.dumps([id for id, game in manager.get_games().items()])
 
 @socketio.on("connect")
 def on_connect():
