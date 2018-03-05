@@ -12,6 +12,21 @@ def start(game_id):
     manager.start_game(game_id)
     return json.dumps([id for id, game in manager.get_games().items()])
 
+@app.route("/board/<string:game_id>")
+def board(game_id):
+    game, created = manager.find_or_create_game(game_id)
+    print(game.board.to_string())
+
+    return ""
+
+@app.route("/step/<string:game_id>")
+def step(game_id):
+    game, created = manager.find_or_create_game(game_id)
+    game.step_game(allow_stepping=False)
+    print(game.board.to_string())
+
+    return ""
+
 @socketio.on("connect")
 def on_connect():
     app.logger.info("client %s connected", request.sid)

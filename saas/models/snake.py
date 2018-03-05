@@ -116,7 +116,7 @@ class Snake(object):
   def is_alive(self):
     return self.health >= 0
 
-  def kill(self, turn_number, reason, killer):
+  def kill(self, turn_number, reason, killer=None):
     self.health = 0
     self.death = { "turn": turn_number, "reason": reason, "killer": killer }
 

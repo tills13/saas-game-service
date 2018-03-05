@@ -93,18 +93,18 @@ class Board:
 
     def get_neighbors(self, position: BoardPosition):
         neighbors = [
-            { "x": position["x"] + dx, "y": position["y"] + dy }
+            [position["x"] + dx, position["y"] + dy]
             for [ dx, dy ] in
             [ [0, 1], [1, 0], [-1, 0], [0, -1] ]
         ]
 
         # filter neighbors that are outside the board
         return [
-            neighbor for neighbor in neighbors
-            if neighbor["x"] >= 0 and \
-                neighbor["y"] >= 0 and \
-                neighbor["x"] < self.width and \
-                neighbor["y"] < self.width
+            [x, y] for [x, y] in neighbors
+            if x >= 0 and \
+                y >= 0 and \
+                x < self.width and \
+                y < self.width
         ]
 
     def get_random_empty_position(self, positions: PositionList = None, exclude: PositionList = None) -> Position:
@@ -154,6 +154,8 @@ class Board:
 
     def initialize_snakes(self, snake_start_length=3):
         for index, (snake_id, snake) in enumerate(self.snakes.items()):
+            snake.reset()
+
             if self.configuration:
                 m_snake = None
                 if snake_id in [snake["id"] for snake in self.configuration["snakes"]]:
@@ -167,11 +169,19 @@ class Board:
 
             # default to random placement
             for _ in range(0, snake_start_length):
-                x, y = self.get_random_empty_position(exclude=snake.body)
+                if not snake.body: x, y = self.get_random_empty_position()
+                else:
+                    neighbors = [
+                        n for n in
+                        self.get_neighbors(position=snake.body[-1])
+                        if n not in [ [p["x"], p["y"]] for p in snake.body ]
+                    ]
+
+                    if not neighbors: break
+
+                    x, y = random.choice(neighbors)
+
                 snake.body.append({ "x": x, "y": y, "color": snake.color })
-
-
-            snake.reset()
 
     def spawn_food_by_strat(self, strat: str):
         if strat == SPAWN_STRATEGY_RANDOM:
@@ -245,8 +255,6 @@ class Board:
         if tick_snakes:
             # update all positions and health
             for snake_id, snake in self.snakes.items():
-                snake.decr_health
-
                 current_head_position = snake.head
                 next_position_vector = {
                     Board.MOVE_UP: [0, -1],
@@ -316,7 +324,7 @@ class Board:
                         snake.kill(game.turn_number, "collision", thing.id)
                 else:
                     snake.score = snake.score + 0.1
-                    snake.body.pop()
+                    if not game.game["pinTail"]: snake.body.pop()
 
     def to_json(self, api_version: str = None):
         if api_version == "2018": snakes = [ snake for snake_id, snake in self.snakes.items() ]
@@ -349,3 +357,28 @@ class Board:
         board_json["walls"] = [ get_coordinate(coord, api_version) for coord in self.walls ]
 
         return board_json
+
+    def to_string(self):
+        board_string = "|" + " - " * self.width + "|\n"
+
+        for x in range(0, self.width):
+            board_string = board_string + "|"
+
+            for y in range(0, self.height):
+                value, thing = self.get_at_position(x, y)
+                if value == Board.BOARD_TYPE_EMPTY: char = " "
+                elif value == Board.BOARD_TYPE_FOOD: char = "O"
+                elif value == Board.BOARD_TYPE_GOLD: char = "X"
+                elif value == Board.BOARD_TYPE_SNAKE:
+                    print(thing.head)
+                    if [x, y] == [thing.head["x"], thing.head["y"]]: char = "*"
+                    else: char = "="
+                elif value == Board.BOARD_TYPE_WALL: char = "¤"
+
+                board_string = board_string + f" {char} "
+
+            board_string = board_string + "|\n"
+
+        board_string = board_string + "|" + " - " * self.width + "|"
+
+        return board_string

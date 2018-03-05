@@ -230,6 +230,10 @@ class Game(Thread):
         self.history = []
         snakes = self.board.get_snakes()
 
+        if not snakes:
+            app.logger.error("[%s] no snakes in game", self.game_id)
+            return
+
         app.logger.info(
             "[%s] %d snakes [%s]",
             self.game_id,
@@ -376,7 +380,7 @@ class Game(Thread):
         self.turn_number = self.turn_number + 1
         self.update_clients(errors=errors)
 
-        self.history.push(self.board.to_json(api_version=Game.api_version))
+        self.history.append(self.board.to_json(api_version=Game.api_version))
 
         # allow the game to continue until there are no snakes alive for testing purposes
         if self.win_conditions_met():
