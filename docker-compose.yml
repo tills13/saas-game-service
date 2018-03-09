@@ -1,7 +1,7 @@
 version: "2"
 
 services:
-  manager:
+  saas.manager:
     build: .
     container_name: saas.manager
     command: ["python3", "app.py"]
@@ -20,4 +20,4 @@ services:
 networks:
   default:
     external:
-      name: server_default
+      name: saasapi_default

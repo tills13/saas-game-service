@@ -17,8 +17,9 @@ set_snake_place = postgres.prepare("""
 get_game_prepared = postgres.prepare("""
     SELECT
         "g"."id"::text, "g"."boardFoodCount", "g"."boardFoodStrategy", "g"."boardGoldCount", "g"."boardGoldStrategy", "g"."pinTail",
-        "g"."boardGoldWinningThreshold", "g"."boardGoldRespawnInterval", "g"."boardHasGold", "g"."boardHasWalls", "g"."boardHasTeleporters", "g"."boardRows",
-        "g"."boardColumns", "g"."boardTeleporterCount", "g"."creatorId"::text, "g"."devMode", "g"."status", "g"."tickRate", "g"."turnLimit", "g"."responseTime",
+        "g"."boardGoldWinningThreshold", "g"."boardGoldRespawnInterval", "g"."boardHasGold", "g"."boardHasWalls", "g"."boardHasTeleporters",
+        "g"."boardRows", "g"."boardColumns", "g"."boardTeleporterCount", "g"."creatorId"::text, "g"."devMode", "g"."status", "g"."tickRate",
+        "g"."turnLimit", "g"."responseTime", "g"."gameType" as "gameType",
         "d"."id"::text AS "daemon_id", "d"."name" AS "daemon_name", "d"."url" AS "daemon_url",
         "bc"."id"::text AS "board_configuration_id", "bc"."configuration" AS "board_configuration", "bc"."name" AS "board_configuration_name"
     FROM "public"."Games" AS "g"

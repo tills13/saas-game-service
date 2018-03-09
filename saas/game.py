@@ -8,7 +8,6 @@ from queue import Empty, PriorityQueue
 from requests.exceptions import HTTPError, ConnectionError as RequestsConnectionError
 from threading import Event, Thread
 
-
 from . import app, postgres, redis, socketio
 from . import models
 from .queries import clone_game, get_child_games, get_game_prepared, get_game_snakes_prepared, set_game_status, set_snake_place
@@ -107,13 +106,36 @@ class Game(Thread):
             set_game_status(Game.STATUS_COMPLETED, self.game_id)
             self.sync_game()
 
-            sorted_snakes = sorted(
-                [snake for snake_id, snake in snakes.items()],
-                key=lambda snake: snake.score
-            )
+            if self.game["gameType"] == "TYPE_SCORE":
+                sorted_snakes = sorted(
+                    [snake for snake_id, snake in snakes.items()],
+                    key=lambda snake: snake.score
+                )
+            elif self.game["gameType"] == "TYPE_PLACEMENT":
+                sorted_snakes = reversed(sorted(
+                    [snake for snake_id, snake in snakes.items()],
+                    # cmp=lambda a, b:
+                    key=lambda snake: 0 if not snake.death else snake.death["turn"]
+                ))
 
             for place, snake in enumerate(sorted_snakes):
                 set_snake_place(place + 1, snake.id, self.game_id)
+
+        for snake in snakes.items():
+            try:
+                response = requests.post(
+                    f"{snake.get_url(dev_mode=self.game['devMode'])}/end",
+                    headers={ "Content-Type": "application/json" },
+                    timeout=self.game["responseTime"],
+                    json={ "winner_id": sorted_snakes[0].id, "you": snake.id }
+                )
+            except (RequestsConnectionError, HTTPError) as error:
+                app.logger.info(
+                    "[%s] /end (%s): %s",
+                    self.game_id,
+                    snake.id,
+                    error
+                )
 
         self.redirect_to_child()
 
