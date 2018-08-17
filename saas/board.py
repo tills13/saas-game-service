@@ -370,7 +370,6 @@ class Board:
                 elif value == Board.BOARD_TYPE_FOOD: char = "O"
                 elif value == Board.BOARD_TYPE_GOLD: char = "X"
                 elif value == Board.BOARD_TYPE_SNAKE:
-                    print(thing.head)
                     if [x, y] == [thing.head["x"], thing.head["y"]]: char = "*"
                     else: char = "="
                 elif value == Board.BOARD_TYPE_WALL: char = "¤"

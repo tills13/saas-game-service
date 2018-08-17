@@ -4,7 +4,7 @@ services:
   saas.manager:
     build: .
     container_name: saas.manager
-    command: ["python3", "app.py"]
+    command: ["python", "app.py"]
     environment:
       DB_HOST: saas.postgres
       REDIS_HOST: saas.redis
@@ -20,4 +20,4 @@ services:
 networks:
   default:
     external:
-      name: saasapi_default
+      name: server_default

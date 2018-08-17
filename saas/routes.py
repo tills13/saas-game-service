@@ -1,7 +1,7 @@
 import json
 from saas import socketio, app, manager
 from flask_socketio import emit, rooms
-from flask import render_template, request
+from flask import render_template, request, jsonify
 
 @app.route("/")
 def index():
@@ -15,15 +15,13 @@ def start(game_id):
 @app.route("/board/<string:game_id>")
 def board(game_id):
     game, created = manager.find_or_create_game(game_id)
-    print(game.board.to_string())
-
-    return ""
+    return jsonify(game.to_json())
 
 @app.route("/step/<string:game_id>")
 def step(game_id):
     game, created = manager.find_or_create_game(game_id)
     game.step_game(allow_stepping=False)
-    print(game.board.to_string())
+    # print(game.board.to_json())
 
     return ""
 

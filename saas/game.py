@@ -57,9 +57,8 @@ class Game(Thread):
 
         if update is None: return
 
-        if "$spawn" in update:
-            for element in ["walls"]:
-                self.board.walls.extend(update["$spawn"][element])
+        for wall in update["$spawn"]["walls"]:
+            self.board.spawn_wall(wall["x"], wall["y"])
 
         if "$destroy" in update:
             pass
@@ -97,7 +96,7 @@ class Game(Thread):
         if current <= 1: redis.set("game:viewer_count:{}".format(self.game_id), 0)
         else: redis.decr("game:viewer_count:{}".format(self.game_id))
 
-        socketio.emit("viewer_count", int(redis.get("game:viewer_count:{}".format(self.game_id))), room=self.game_id)
+        self.update_clients()
 
     def finish_game(self):
         snakes = self.board.get_snakes()
@@ -150,7 +149,7 @@ class Game(Thread):
                 self.game["daemon_url"],
                 timeout=self.game["responseTime"],
                 headers={ "Content-Type": "application/json" },
-                json=self.board.to_json()
+                json=self.to_json()
             )
 
             if response.status_code == 200:
@@ -197,7 +196,7 @@ class Game(Thread):
                 response_json = response.json()
                 snake.handle_move_response(response_json)
         except (ValueError, RequestsConnectionError, HTTPError) as m_error:
-            app.logger.info("[%s] init error (%s): %s", self.game_id, snake.name, m_error)
+            app.logger.info("[%s] get_snake_next_move error (%s): %s", self.game_id, snake.name, m_error)
             snake.error = m_error
             error = m_error
 
@@ -322,6 +321,7 @@ class Game(Thread):
     def restart_game(self):
         app.logger.info("restarting game %s", self.game_id)
         set_game_status(Game.STATUS_RESTARTED, self.game_id)
+        self.turn_number = 0
         self.sync_game()
         self.initialize_game()
 
@@ -380,7 +380,7 @@ class Game(Thread):
         for snake_id, snake in snakes.items():
             snake, error = self.get_snake_next_move(snake)
 
-            if error: errors[snake.id] = error
+            if error: errors[snake.id] = error.message
 
         self.board.update(self, snakes, tick_snakes=True)
 
@@ -428,16 +428,8 @@ class Game(Thread):
             } if self.game["daemon_id"] else None
 
     def update_clients(self, errors=None, broadcast=True):
-        if self.board is not None:
-            data = {
-                "board": self.board.to_json(api_version=Game.api_version),
-                "daemon": self.game_daemon,
-                "errors": errors,
-                "turn": self.turn_number,
-                "turnLimit": self.game["turnLimit"]
-            }
-
-            socketio.emit("update", data, room=self.game_id, broadcast=broadcast)
+        data = self.to_json(errors)
+        socketio.emit("update", data, room=self.game_id, broadcast=broadcast)
 
     def watch(self):
         join_room(self.game_id)
@@ -448,7 +440,6 @@ class Game(Thread):
 
         redis.incr("game:viewer_count:{}".format(self.game_id))
 
-        socketio.emit("viewer_count", int(redis.get("game:viewer_count:{}".format(self.game_id))), room=self.game_id)
         self.update_clients(broadcast=False)
 
     def win_conditions_met(self):
@@ -464,3 +455,18 @@ class Game(Thread):
             return True
 
         return False
+
+    def to_json(self, errors=None):
+        data = { }
+
+        if self.board is not None:
+            data = {
+                "id": self.game["id"],
+                "board": self.board.to_json(api_version=Game.api_version),
+                "daemon": self.game_daemon,
+                "errors": errors,
+                "turnNumber": self.turn_number,
+                "viewers": int(redis.get("game:viewer_count:{}".format(self.game_id)))
+            }
+
+        return data

@@ -85,7 +85,7 @@ class Snake(object):
     if self.api_version == "2018":
       self.name = start_response["name"]
       self.color = start_response["color"]
-      self.seconrdary_color = start_response["secondary_color"]
+      self.secondary_color = start_response.get("secondary_color", "")
 
   @property
   def head(self):
@@ -160,12 +160,12 @@ class Snake(object):
     self.taunt = ""
 
   @property
-  def seconrdary_color(self):
-    return self._seconrdary_color
+  def secondary_color(self):
+    return self._secondary_color
 
-  @seconrdary_color.setter
-  def seconrdary_color(self, seconrdary_color):
-    self._seconrdary_color = seconrdary_color
+  @secondary_color.setter
+  def secondary_color(self, secondary_color):
+    self._secondary_color = secondary_color
 
   @property
   def taunt(self):

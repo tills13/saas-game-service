@@ -1,5 +1,4 @@
 import saas.models
-# print (saas.models)
 
 def wrap_list(items, api_version):
     if api_version == "2018":
